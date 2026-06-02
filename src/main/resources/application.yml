@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: ecommerce
+  profiles:
+    active: dev
+
+  logging:
+    level:
+      org.flywaydb: DEBUG
+      com.zaxxer.hikari: DEBUG
