@@ -7,6 +7,8 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "users")
@@ -23,7 +25,8 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
     @Column(nullable = false)
-    private String role;
+    @Enumerated(EnumType.STRING)
+    private Role role;
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
