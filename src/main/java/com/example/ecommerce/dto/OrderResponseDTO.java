@@ -1,3 +1,5 @@
 package com.example.ecommerce.dto;
 
-public record OrderResponseDTO(String orderId, String message, int quantity) {}
+import java.math.BigDecimal;
+
+public record OrderResponseDTO(String orderId, String message, BigDecimal amount){}

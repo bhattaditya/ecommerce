@@ -7,6 +7,5 @@ import com.example.ecommerce.entity.Order;
 import java.math.BigDecimal;
 
 public interface OrderService {
-    BigDecimal calculateTotalOrder(Order order);
     OrderResponseDTO placeOrder(OrderRequestDTO orderRequest);
 }

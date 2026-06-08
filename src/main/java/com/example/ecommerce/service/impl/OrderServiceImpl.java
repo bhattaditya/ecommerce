@@ -1,6 +1,6 @@
 package com.example.ecommerce.service.impl;
 
-
+import com.example.ecommerce.dto.OrderItemRequest;
 import com.example.ecommerce.dto.OrderRequestDTO;
 import com.example.ecommerce.dto.OrderResponseDTO;
 import com.example.ecommerce.entity.*;
@@ -8,18 +8,19 @@ import com.example.ecommerce.exception.PaymentFailedException;
 import com.example.ecommerce.exception.ProductNotFoundException;
 import com.example.ecommerce.exception.QuantityException;
 import com.example.ecommerce.repository.OrderRepository;
+import com.example.ecommerce.repository.PaymentRepository;
 import com.example.ecommerce.repository.ProductRepository;
 import com.example.ecommerce.repository.UserRepository;
 import com.example.ecommerce.service.OrderService;
-import jakarta.transaction.Transactional;
+import com.example.ecommerce.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -27,11 +28,11 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
-    private final PaymentServiceImpl paymentService;
-    private final UserRepository userRepository;;
+    private final PaymentService paymentService;
+    private final PaymentRepository paymentRepository;
+    private final UserRepository userRepository;
 
-    @Override
-    public BigDecimal calculateTotalOrder(Order order) {
+    private BigDecimal calculateTotalOrder(Order order) {
         return order.getItems().stream()
                 .map(item -> item.getPriceAtPurchase().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -39,44 +40,89 @@ public class OrderServiceImpl implements OrderService {
 
     @Transactional
     public OrderResponseDTO placeOrder(OrderRequestDTO orderRequestDTO) {
-        long productId = orderRequestDTO.productId();
-
-        Product product = productRepository.findById(productId).
-                orElseThrow(() -> new ProductNotFoundException(productId));
-
-        int inventory = product.getStockQuantity();
-        int requestedQuantity = orderRequestDTO.requestedQuantity();
-
-        if (inventory <= 0 || inventory < requestedQuantity) {
-            throw new QuantityException("Out of Stock!");
-        }
-
-        String payMethod = orderRequestDTO.paymentMethod();
-        boolean isPaymentSuccess = paymentService.processPayment(UUID.randomUUID().toString(), payMethod, product.getPrice().doubleValue());
-
-        if (!isPaymentSuccess) {
-            throw new PaymentFailedException("Payment failed!");
-        }
 
         String email = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         User user = userRepository.findByEmail(email).orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
 
         Order order = new Order();
-        OrderItem orderItem = new OrderItem();
 
         order.setUser(user);
         order.setOrderStatus(OrderStatus.CREATED);
 
-        orderItem.setOrder(order);
-        orderItem.setProduct(product);
-        orderItem.setPriceAtPurchase(product.getPrice());
 
-        order.setItems(List.of(orderItem));
+        List<OrderItem> orderItems = new ArrayList<>();
+
+        Map<Long, Integer> reservedStock = new HashMap<>();
+
+        for (OrderItemRequest orderItemRequest: orderRequestDTO.items()) {
+
+            Product product = productRepository.findById(orderItemRequest.productId()).
+                    orElseThrow(() -> new ProductNotFoundException(orderItemRequest.productId()));
+
+            int alreadyReservedStock = reservedStock.getOrDefault(product.getId(), 0);
+            int availableStock = product.getStockQuantity() - alreadyReservedStock;
+
+            OrderItem orderItem = getOrderItem(availableStock, orderItemRequest, product, order);
+            reservedStock.merge(product.getId(), orderItemRequest.quantity(), Integer::sum);
+
+            orderItems.add(orderItem);
+        }
+
+        for (OrderItem item : orderItems) {
+            Product product = item.getProduct();
+            int inventory = product.getStockQuantity();
+            int requestedQuantity = item.getQuantity();
+            product.setStockQuantity(inventory-requestedQuantity);
+        }
+
+        order.setItems(orderItems);
+        order.setTotalAmount(calculateTotalOrder(order));
         orderRepository.save(order);
-
-        product.setStockQuantity(inventory-requestedQuantity);
-        productRepository.save(product);
         String orderID = "Order" + UUID.randomUUID();
-        return new OrderResponseDTO(orderID, null, 0);
+
+        Payment payment = new Payment();
+
+        String payMethod = orderRequestDTO.paymentMethod();
+        int attemptCount = paymentRepository.countByOrderId(order.getId()) + 1;
+        boolean paid = paymentService.processPayment(orderID, payMethod, order.getTotalAmount());
+
+        if (!paid) {
+            payment.setOrder(order);
+            payment.setAmount(order.getTotalAmount());
+            payment.setAttemptNumber(attemptCount);
+            payment.setStatus(PaymentStatus.FAILED);
+            paymentRepository.save(payment);
+            throw new PaymentFailedException("Payment failed! Attempt: " + attemptCount);
+        }
+
+
+        payment.setOrder(order);
+        payment.setAmount(order.getTotalAmount());
+        payment.setStatus(PaymentStatus.SUCCESS);
+        payment.setTransactionId(UUID.randomUUID().toString());
+        payment.setAttemptNumber(attemptCount);
+        paymentRepository.save(payment);
+
+        order.setOrderStatus(OrderStatus.CONFIRMED);
+        orderRepository.save(order);
+        return new OrderResponseDTO(orderID, order.getOrderStatus().name(), order.getTotalAmount());
+    }
+
+    private static OrderItem getOrderItem(int availableStock, OrderItemRequest orderItemRequest, Product product, Order order) {
+        int requestedQuantity = orderItemRequest.quantity();
+
+        if (availableStock < orderItemRequest.quantity()) {
+            throw new QuantityException(
+                    String.format("Insufficient stock for product '%s'. Requested: %d, Available: %d",
+                            product.getName(), requestedQuantity, availableStock)
+            );
+        }
+
+        OrderItem orderItem = new OrderItem();
+        orderItem.setProduct(product);
+        orderItem.setQuantity(requestedQuantity);
+        orderItem.setPriceAtPurchase(product.getPrice());
+        orderItem.setOrder(order);
+        return orderItem;
     }
 }
