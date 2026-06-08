@@ -1,4 +1,3 @@
--- V3__create_orders_table.sql
 CREATE TABLE orders (
                         id              BIGSERIAL       PRIMARY KEY,
                         user_id         BIGINT          NOT NULL REFERENCES users(id),

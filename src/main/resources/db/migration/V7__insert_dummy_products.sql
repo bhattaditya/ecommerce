@@ -1,4 +1,3 @@
--- V7__insert_dummy_products.sql
 INSERT INTO products
     (name, description, price, stock_quantity, category) VALUES
 

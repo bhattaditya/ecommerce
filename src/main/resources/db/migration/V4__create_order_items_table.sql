@@ -1,4 +1,3 @@
--- V4__create_order_items_table.sql
 CREATE TABLE order_items (
                              id                  BIGSERIAL       PRIMARY KEY,
                              order_id            BIGINT          NOT NULL REFERENCES orders(id),

@@ -28,11 +28,12 @@ public class Order {
     private OrderStatus orderStatus;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<OrderItem> items = new ArrayList<>();;
+    private List<OrderItem> items = new ArrayList<>();
+
     private BigDecimal totalAmount;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
-    private List<Payment> payments = new ArrayList<>();;
+    private List<Payment> payments = new ArrayList<>();
 
     public Optional<Payment> getSuccessfulPayment() {
         return payments.stream()

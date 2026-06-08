@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.*;
 
+import static com.example.ecommerce.Constants.*;
+
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
@@ -29,6 +31,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final PaymentService paymentService;
+    private final AuditService auditService;
     private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
 
@@ -78,6 +81,7 @@ public class OrderServiceImpl implements OrderService {
         order.setItems(orderItems);
         order.setTotalAmount(calculateTotalOrder(order));
         orderRepository.save(order);
+        auditService.logAction(ORDER_INITIATED, email, "Order ID: " + order.getId() + ", Total: " + order.getTotalAmount());
         String orderID = "Order" + UUID.randomUUID();
 
         Payment payment = new Payment();
@@ -91,6 +95,7 @@ public class OrderServiceImpl implements OrderService {
             payment.setAmount(order.getTotalAmount());
             payment.setAttemptNumber(attemptCount);
             payment.setStatus(PaymentStatus.FAILED);
+            auditService.logAction(ORDER_FAILED, email, "Order ID: " + order.getId() + ", Total: " + order.getTotalAmount());
             paymentRepository.save(payment);
             throw new PaymentFailedException("Payment failed! Attempt: " + attemptCount);
         }
@@ -105,6 +110,8 @@ public class OrderServiceImpl implements OrderService {
 
         order.setOrderStatus(OrderStatus.CONFIRMED);
         orderRepository.save(order);
+        auditService.logAction(ORDER_CONFIRMED, email, "Order ID: " + order.getId() + ", Total: " + order.getTotalAmount());
+
         return new OrderResponseDTO(orderID, order.getOrderStatus().name(), order.getTotalAmount());
     }
 

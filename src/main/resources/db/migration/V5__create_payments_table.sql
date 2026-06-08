@@ -1,4 +1,3 @@
--- V5__create_payments_table.sql
 CREATE TABLE payments (
                           id              BIGSERIAL       PRIMARY KEY,
                           order_id        BIGINT          NOT NULL REFERENCES orders(id),
