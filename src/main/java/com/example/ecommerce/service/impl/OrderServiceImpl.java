@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import static com.example.ecommerce.Constants.*;
 
@@ -32,6 +34,8 @@ public class OrderServiceImpl implements OrderService {
     private final ProductRepository productRepository;
     private final PaymentService paymentService;
     private final AuditService auditService;
+    private final NotificationService notificationService;
+    private final OrderValidationService orderValidationService;
     private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
 
@@ -45,6 +49,8 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponseDTO placeOrder(OrderRequestDTO orderRequestDTO) {
 
         String email = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        orderValidationService.validateOrder(email, orderRequestDTO.items());
+
         User user = userRepository.findByEmail(email).orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
 
         Order order = new Order();
@@ -97,6 +103,7 @@ public class OrderServiceImpl implements OrderService {
             payment.setStatus(PaymentStatus.FAILED);
             auditService.logAction(ORDER_FAILED, email, "Order ID: " + order.getId() + ", Total: " + order.getTotalAmount());
             paymentRepository.save(payment);
+            notificationService.sendPaymentFailureAlert(email, orderID, attemptCount);
             throw new PaymentFailedException("Payment failed! Attempt: " + attemptCount);
         }
 
@@ -111,6 +118,7 @@ public class OrderServiceImpl implements OrderService {
         order.setOrderStatus(OrderStatus.CONFIRMED);
         orderRepository.save(order);
         auditService.logAction(ORDER_CONFIRMED, email, "Order ID: " + order.getId() + ", Total: " + order.getTotalAmount());
+        notificationService.sendOrderConfirmation(email, orderID, order.getTotalAmount());
 
         return new OrderResponseDTO(orderID, order.getOrderStatus().name(), order.getTotalAmount());
     }
