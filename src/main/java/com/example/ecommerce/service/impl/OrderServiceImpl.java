@@ -4,22 +4,23 @@ import com.example.ecommerce.dto.OrderItemRequest;
 import com.example.ecommerce.dto.OrderRequestDTO;
 import com.example.ecommerce.dto.OrderResponseDTO;
 import com.example.ecommerce.entity.*;
+import com.example.ecommerce.event.OrderPlacedEvent;
 import com.example.ecommerce.exception.PaymentFailedException;
 import com.example.ecommerce.exception.ProductNotFoundException;
 import com.example.ecommerce.exception.QuantityException;
-import com.example.ecommerce.repository.OrderRepository;
-import com.example.ecommerce.repository.PaymentRepository;
-import com.example.ecommerce.repository.ProductRepository;
-import com.example.ecommerce.repository.UserRepository;
+import com.example.ecommerce.repository.*;
 import com.example.ecommerce.service.OrderService;
 import com.example.ecommerce.service.PaymentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -38,6 +39,8 @@ public class OrderServiceImpl implements OrderService {
     private final OrderValidationService orderValidationService;
     private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final OutboxEventRepository outboxEventRepository;
 
     private BigDecimal calculateTotalOrder(Order order) {
         return order.getItems().stream()
@@ -103,7 +106,10 @@ public class OrderServiceImpl implements OrderService {
             payment.setStatus(PaymentStatus.FAILED);
             auditService.logAction(ORDER_FAILED, email, "Order ID: " + order.getId() + ", Total: " + order.getTotalAmount());
             paymentRepository.save(payment);
-            notificationService.sendPaymentFailureAlert(email, orderID, attemptCount);
+
+            OutboxEvent event = getOutboxEvent(order, email, EventType.PAYMENT_FAILED);
+            outboxEventRepository.save(event);
+
             throw new PaymentFailedException("Payment failed! Attempt: " + attemptCount);
         }
 
@@ -118,9 +124,20 @@ public class OrderServiceImpl implements OrderService {
         order.setOrderStatus(OrderStatus.CONFIRMED);
         orderRepository.save(order);
         auditService.logAction(ORDER_CONFIRMED, email, "Order ID: " + order.getId() + ", Total: " + order.getTotalAmount());
-        notificationService.sendOrderConfirmation(email, orderID, order.getTotalAmount());
+
+        OutboxEvent event = getOutboxEvent(order, email, EventType.ORDER_PLACED);
+        outboxEventRepository.save(event);
 
         return new OrderResponseDTO(orderID, order.getOrderStatus().name(), order.getTotalAmount());
+    }
+
+    private static OutboxEvent getOutboxEvent(Order order, String email, EventType eventType) {
+        OutboxEvent event = new OutboxEvent();
+        event.setEventType(eventType.name());
+        event.setOrderId(String.valueOf(order.getId()));
+        event.setAmount(order.getTotalAmount());
+        event.setEmail(email);
+        return event;
     }
 
     private static OrderItem getOrderItem(int availableStock, OrderItemRequest orderItemRequest, Product product, Order order) {
