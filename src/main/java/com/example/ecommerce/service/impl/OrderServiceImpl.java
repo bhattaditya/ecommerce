@@ -4,7 +4,6 @@ import com.example.ecommerce.dto.OrderItemRequest;
 import com.example.ecommerce.dto.OrderRequestDTO;
 import com.example.ecommerce.dto.OrderResponseDTO;
 import com.example.ecommerce.entity.*;
-import com.example.ecommerce.event.OrderPlacedEvent;
 import com.example.ecommerce.exception.PaymentFailedException;
 import com.example.ecommerce.exception.ProductNotFoundException;
 import com.example.ecommerce.exception.QuantityException;
@@ -12,7 +11,6 @@ import com.example.ecommerce.repository.*;
 import com.example.ecommerce.service.OrderService;
 import com.example.ecommerce.service.PaymentService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -20,10 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 
 import static com.example.ecommerce.Constants.*;
 
